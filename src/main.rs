@@ -72,6 +72,9 @@ fn main() {
                     kmers.push(vectransformer(&kmer, k));
                 }
             }
+            kmers.sort();
+            kmers.dedup();
+
             let filter = BinaryFuse8::try_from(&kmers).unwrap();
             let packfil = FuzFil{x:filter};
             let mut serialized = Vec::new();
@@ -97,7 +100,7 @@ fn main() {
                     let rc = revcomp(&kmer);
                     let rcsmerx: Vec<Vec<u8>> = smers(&rc, z, k);
 
-                    if start_checking(&kmers, smerx) || start_checking(&kmers, rcsmerx) {
+                    if start_checking(&kmers, &smerx) || start_checking(&kmers, &rcsmerx) {
                         count_pos += 1;
                     }
                     else {
@@ -145,13 +148,13 @@ fn revcomp(kmer:&Vec<u8>)->Vec<u8> {
 
 fn smers(kmer:&Vec<u8>, z:&usize, k:&usize) ->Vec<Vec<u8>> {
     let mut smers:Vec<Vec<u8>> = vec![];
-    for i in 0..*z {
+    for i in 0..*z+1 {
         smers.push(kmer[i..i+k-z].to_vec());
     }
     return smers;
 }
 
-fn start_checking(filter:&BinaryFuse8, smers:Vec<Vec<u8>>) -> bool{
+fn start_checking(filter:&BinaryFuse8, smers:&Vec<Vec<u8>>) -> bool{
     let mut i = 0;
     let mut positive = true;
     while (i < smers.len()) && (positive){
@@ -159,4 +162,12 @@ fn start_checking(filter:&BinaryFuse8, smers:Vec<Vec<u8>>) -> bool{
         i += 1;
     }
     return positive;
+}
+
+fn smers_to_str(smers:&Vec<Vec<u8>>) -> Vec<String>{
+    let mut vs:Vec<String> = vec![];
+    for s in smers{
+        vs.push(String::from_utf8(s.to_vec()).unwrap())
+    }
+    return vs;
 }
