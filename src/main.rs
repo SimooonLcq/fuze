@@ -154,7 +154,7 @@ fn smers(kmer:&Vec<u8>, z:&usize, k:&usize) ->Vec<Vec<u8>> {
 fn start_checking(filter:&BinaryFuse8, smers:Vec<Vec<u8>>) -> bool{
     let mut i = 0;
     let mut positive = true;
-    while (i <= smers.len()) && (positive){
+    while (i < smers.len()) && (positive){
         positive = filter.contains(&vectransformer(&smers[i], &(smers[i].len())));
         i += 1;
     }
