@@ -13,10 +13,6 @@ const CONFIG: Config = ParserOptions::default().config();
 #[derive(Parser)]
 #[command(version, about, long_about = None)]
 struct Args {
-    ///Kmer length. Caution, only k=31 is usable.
-    #[arg(short)]
-    k: usize,
-
     #[command(subcommand)]
     command: Option<Commands>,
 }
@@ -24,16 +20,32 @@ struct Args {
 #[derive(Subcommand)]
 enum Commands {
     Build {
+        ///Kmer length
+        #[arg(short)]
+        k: usize,
+
+        ///Input fasta file
         #[arg(short = 'f', long = "input")]
         input: String,
 
+        ///Output index file
         #[arg(short = 'o', long = "output")]
         output: String,
     },
     Query {
+        ///Kmer length
+        #[arg(short)]
+        k: usize,
+
+        ///z (=k-s, with k the lenght of query k-mers and s the length of indexed s-mers)
+        #[arg(short)]
+        z: usize,
+
+        ///Input index file
         #[arg(short = 'i', long = "index")]
         index: String,
 
+        ///Input query fasta file
         #[arg(short = 'q', long = "query")]
         query: String,
     },
@@ -48,15 +60,16 @@ fn main() {
     let args = Args::parse();
 
     match &args.command {
-        Some(Commands::Build { input, output}) => {
+        Some(Commands::Build { k, input, output}) => {
+            assert!(*k <= 32, "k must be inferior or equal to 32!");
             let mut reader = FastaParser::<CONFIG, _>::from_file(&input).expect("Error during fasta reading");
 
             let mut kmers:Vec<u64> = vec![];
             while let Some(_event) = reader.next(){
                 let seq = reader.get_dna_string_owned();
-                for i in 0..seq.len()-args.k+1{
-                    let kmer = (&seq[i..i+args.k]).to_vec();
-                    kmers.push(vectransformer(&kmer));
+                for i in 0..seq.len()-k+1{
+                    let kmer = (&seq[i..i+k]).to_vec();
+                    kmers.push(vectransformer(&kmer, k));
                 }
             }
             let filter = BinaryFuse8::try_from(&kmers).unwrap();
@@ -66,7 +79,8 @@ fn main() {
             fs::write(output, serialized).expect("Error during writing");
         }
 
-        Some(Commands::Query { index, query}) => {
+        Some(Commands::Query { k, z, index, query}) => {
+            assert!((k-z) <= 32, "s must be inferior or equal to 32!");
             let mut qfile = FastaParser::<CONFIG, _>::from_file(query).expect("Error during fasta reading");
             let mpack = fs::read(index).expect("Error while reading index");
             let deserialized: FuzFil = rmp_serde::from_slice(&mpack).unwrap();
@@ -76,10 +90,14 @@ fn main() {
             let mut count_neg = 0;
             while let Some(_event) = qfile.next(){
                 let seq = qfile.get_dna_string_owned();
-                for i in 0..seq.len()-args.k+1{
-                    let kmer = (&seq[i..i+args.k]).to_vec();
+                for i in 0..seq.len()-k+1{
+                    let kmer = (&seq[i..i+k]).to_vec();
+                    let smerx: Vec<Vec<u8>> = smers(&kmer, z, k);
+                    
                     let rc = revcomp(&kmer);
-                    if kmers.contains(&vectransformer(&kmer)) || kmers.contains(&vectransformer(&rc)) {
+                    let rcsmerx: Vec<Vec<u8>> = smers(&rc, z, k);
+
+                    if start_checking(&kmers, smerx) || start_checking(&kmers, rcsmerx) {
                         count_pos += 1;
                     }
                     else {
@@ -97,15 +115,16 @@ fn main() {
     }
 }
 
-fn vectransformer(kmer:&Vec<u8>) -> u64{
+fn vectransformer(kmer:&Vec<u8>, k:&usize) -> u64{
     let mut v = bitvec![];
     for nuc in kmer{
         let b = nuc.view_bits::<Msb0>();
         v.push(b[5]);
         v.push(b[6]);
     }
-    v.push(false);
-    v.push(false);
+    for _i in 0..((32-k)*2){
+        v.push(false);
+    }
     return v.as_raw_slice()[0].try_into().unwrap();
 }
 
@@ -122,4 +141,22 @@ fn revcomp(kmer:&Vec<u8>)->Vec<u8> {
     }
     rc.reverse();
     return rc;
+}
+
+fn smers(kmer:&Vec<u8>, z:&usize, k:&usize) ->Vec<Vec<u8>> {
+    let mut smers:Vec<Vec<u8>> = vec![];
+    for i in 0..*z {
+        smers.push(kmer[i..i+k-z].to_vec());
+    }
+    return smers;
+}
+
+fn start_checking(filter:&BinaryFuse8, smers:Vec<Vec<u8>>) -> bool{
+    let mut i = 0;
+    let mut positive = true;
+    while (i <= smers.len()) && (positive){
+        positive = filter.contains(&vectransformer(&smers[i], &(smers[i].len())));
+        i += 1;
+    }
+    return positive;
 }
