@@ -69,7 +69,7 @@ fn main() {
                 let seq = reader.get_dna_string_owned();
                 for i in 0..seq.len()-k+1{
                     let kmer = (&seq[i..i+k]).to_vec();
-                    kmers.push(vectransformer(&kmer, k));
+                    kmers.push(vectransformer(&canonical(&kmer), k));
                 }
             }
             kmers.sort();
@@ -97,10 +97,7 @@ fn main() {
                     let kmer = (&seq[i..i+k]).to_vec();
                     let smerx: Vec<Vec<u8>> = smers(&kmer, z, k);
                     
-                    let rc = revcomp(&kmer);
-                    let rcsmerx: Vec<Vec<u8>> = smers(&rc, z, k);
-
-                    if start_checking(&kmers, &smerx) || start_checking(&kmers, &rcsmerx) {
+                    if start_checking(&kmers, &smerx) {
                         count_pos += 1;
                     }
                     else {
@@ -115,6 +112,16 @@ fn main() {
         None => {
             println!("Please tell me what to do!")
         }
+    }
+}
+
+fn canonical(kmer:&Vec<u8>) -> Vec<u8>{
+    let rc = revcomp(kmer);
+    if &rc >= kmer{
+        return kmer.to_vec();
+    }
+    else{
+        return rc;
     }
 }
 
@@ -158,12 +165,12 @@ fn start_checking(filter:&BinaryFuse8, smers:&Vec<Vec<u8>>) -> bool{
     let mut i = 0;
     let mut positive = true;
     while (i < smers.len()) && (positive){
-        positive = filter.contains(&vectransformer(&smers[i], &(smers[i].len())));
+        positive = filter.contains(&vectransformer(&canonical(&smers[i]), &(smers[i].len())));
         i += 1;
     }
     return positive;
 }
-
+/*
 fn smers_to_str(smers:&Vec<Vec<u8>>) -> Vec<String>{
     let mut vs:Vec<String> = vec![];
     for s in smers{
@@ -171,3 +178,4 @@ fn smers_to_str(smers:&Vec<Vec<u8>>) -> Vec<String>{
     }
     return vs;
 }
+    */
